@@ -1,5 +1,141 @@
 import streamlit as st
 import pandas as pd
+from datetime import datetime, date
+from docx import Document
+from io import BytesIO
+
+# --- Page Config ---
+st.set_page_config(page_title="Class Attendance", layout="centered")
+
+# --- Sample Student List (Trimmed) ---
+student_list = [
+    {"Name": "POORVA BETWAR", "Roll Number": "1"},
+    {"Name": "KHUSHI BHATIA", "Roll Number": "2"},
+    # ... include the full list of 70 students exactly as before
+    {"Name": "VIRAJ WANKHADE", "Roll Number": "70"}
+]
+
+# --- Session State Setup ---
+if "present_list" not in st.session_state:
+    st.session_state.present_list = []
+
+if "absent_list" not in st.session_state:
+    st.session_state.absent_list = []
+
+# Track checkbox state for each student
+for student in student_list:
+    key = f"{student['Roll Number']}_status"
+    if key not in st.session_state:
+        st.session_state[key] = True  # default is Present
+
+st.title("📋 Class Attendance System")
+st.subheader("👩‍🏫 Mark Attendance")
+
+# --- MARK ALL OPTIONS ---
+col1, col2 = st.columns(2)
+with col1:
+    if st.button("✅ Mark All Present"):
+        for student in student_list:
+            st.session_state[f"{student['Roll Number']}_status"] = True
+
+with col2:
+    if st.button("❌ Mark All Absent"):
+        for student in student_list:
+            st.session_state[f"{student['Roll Number']}_status"] = False
+
+# --- DATE PICKER ---
+attendance_date = st.date_input("📅 Select Attendance Date", value=date.today())
+marked_attendance = {}
+
+# --- Attendance Form ---
+with st.form("attendance_form"):
+    for student in student_list:
+        key = f"{student['Roll Number']}_status"
+        status = st.checkbox(
+            f"{student['Roll Number']} - {student['Name']}",
+            key=key,
+            value=st.session_state[key]
+        )
+        marked_attendance[student["Roll Number"]] = "Present" if status else "Absent"
+
+    submitted = st.form_submit_button("✅ Submit Attendance")
+
+    if submitted:
+        st.session_state.present_list.clear()
+        st.session_state.absent_list.clear()
+
+        for student in student_list:
+            record = {
+                "Date": attendance_date.strftime('%Y-%m-%d'),
+                "Name": student["Name"],
+                "Roll Number": student["Roll Number"]
+            }
+            if marked_attendance[student["Roll Number"]] == "Present":
+                st.session_state.present_list.append(record)
+            else:
+                st.session_state.absent_list.append(record)
+
+        st.success("🎉 Attendance submitted successfully!")
+
+# --- Display Tables ---
+def show_table(title, data_list):
+    if data_list:
+        st.subheader(f"{title}")
+        df = pd.DataFrame(data_list)
+        st.dataframe(df, use_container_width=True)
+        return df
+    return pd.DataFrame()
+
+df_present = show_table("✅ Present Students", st.session_state.present_list)
+df_absent = show_table("❌ Absent Students", st.session_state.absent_list)
+
+# --- Generate Word File ---
+def create_word_file(present_df, absent_df):
+    doc = Document()
+    doc.add_heading("Class Attendance Report", 0)
+    doc.add_paragraph(f"Date: {attendance_date.strftime('%Y-%m-%d')}")
+    doc.add_paragraph("")
+
+    if not present_df.empty:
+        doc.add_heading("✅ Present Students", level=1)
+        table = doc.add_table(rows=1, cols=len(present_df.columns))
+        hdr_cells = table.rows[0].cells
+        for i, col in enumerate(present_df.columns):
+            hdr_cells[i].text = col
+        for _, row in present_df.iterrows():
+            row_cells = table.add_row().cells
+            for i, val in enumerate(row):
+                row_cells[i].text = str(val)
+        doc.add_paragraph("")
+
+    if not absent_df.empty:
+        doc.add_heading("❌ Absent Students", level=1)
+        table = doc.add_table(rows=1, cols=len(absent_df.columns))
+        hdr_cells = table.rows[0].cells
+        for i, col in enumerate(absent_df.columns):
+            hdr_cells[i].text = col
+        for _, row in absent_df.iterrows():
+            row_cells = table.add_row().cells
+            for i, val in enumerate(row):
+                row_cells[i].text = str(val)
+
+    buffer = BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer
+
+# --- Download Button ---
+if submitted:
+    word_file = create_word_file(df_present, df_absent)
+
+    st.download_button(
+        label="📥 Download Attendance as Word File (.docx)",
+        data=word_file,
+        file_name=f"attendance_{attendance_date.strftime('%Y-%m-%d')}.docx",
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+import streamlit as st
+import pandas as pd
 from datetime import datetime
 from docx import Document
 from io import BytesIO
